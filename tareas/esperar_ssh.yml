@@ -1,0 +1,25 @@
+---
+# ============================================================
+# esperar_ssh.yml - Solo para las PCs (gestion en banda).
+# Antes de 02_red.yml no existe ruta hacia ellas: en vez de fallar,
+# se omiten con un mensaje. Al final de 02_red.yml se vuelve a
+# ejecutar la base para las PCs y aqui se espera la convergencia.
+# ============================================================
+
+- name: SSH - esperar a que el equipo responda por el puerto 22
+  ansible.builtin.wait_for:
+    host: "{{ hostvars[inventory_hostname].ansible_host }}"
+    port: 22
+    timeout: "{{ espera_alcance | default(15) }}"
+  delegate_to: localhost
+  register: ssh_alcance
+  failed_when: false
+
+- name: SSH - equipo sin ruta todavia
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} ({{ hostvars[inventory_hostname].ansible_host }}) aun no es alcanzable. Normal en las PCs antes de 02_red.yml; ese playbook la configura al final."
+  when: ssh_alcance.state is not defined
+
+- name: SSH - omitir este equipo por ahora
+  ansible.builtin.meta: end_host
+  when: ssh_alcance.state is not defined

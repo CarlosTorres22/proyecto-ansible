@@ -1,0 +1,34 @@
+---
+# SW6 - Switch multicapa de El Salvador
+ansible_host: 192.168.99.6
+rol: switch
+router_id: 6.6.6.6
+vlans:
+  - id: 10
+    nombre: USUARIOS
+svis:
+  - vlan: 10
+    descripcion: Gateway LAN usuarios El Salvador
+    ip: 10.0.24.1
+    mascara: 255.255.255.0
+    igp: pasiva
+  - vlan: 1
+    descripcion: MGMT (VLAN por defecto, la usa el Day-0)
+    ip: 192.168.99.6
+    mascara: 255.255.255.0
+interfaces:
+  - nombre: Ethernet0/0
+    descripcion: Enlace L3 hacia R3 e0/1
+    modo: ruteado
+    ip: 10.0.27.2
+    mascara: 255.255.255.0
+    igp: vecino
+  - nombre: Ethernet0/1
+    descripcion: MGMT hacia nube Net
+    modo: acceso
+    vlan: 1
+    gestion: true
+  - nombre: Ethernet0/2
+    descripcion: Usuario PC9
+    modo: acceso
+    vlan: 10

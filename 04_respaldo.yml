@@ -1,0 +1,51 @@
+---
+# ============================================================
+# 04_respaldo.yml - REQUISITO 2 (script 2): obtiene el show running-config de
+# todos los equipos y lo guarda en el servidor de automatizacion:
+#   respaldos/<equipo>/<Mes>/<dia>/<equipo>.<MMDDAAAA>.<HH:MM>.cfg
+#   ej.: respaldos/R1/Oct/24/R1.10242026.23:30.cfg
+# ============================================================
+- name: Olvidar llaves SSH anteriores (cambian con cada Wipe)
+  ansible.builtin.import_playbook: tareas/olvidar_llaves_ssh.yml
+
+- name: Marca de tiempo unica para todo el respaldo
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Calcular fecha y hora del servidor
+      ansible.builtin.set_fact:
+        ts_mes: "{{ now(fmt='%b') }}"
+        ts_dia: "{{ now(fmt='%d') }}"
+        ts_fecha: "{{ now(fmt='%m%d%Y') }}"
+        ts_hora: "{{ now(fmt='%H:%M') }}"
+
+- name: Respaldo del running-config de los equipos de red
+  hosts: red
+  gather_facts: false
+  vars:
+    ts: "{{ hostvars['localhost'] }}"
+    dir_respaldo: "{{ respaldo_raiz }}/{{ inventory_hostname }}/{{ ts.ts_mes }}/{{ ts.ts_dia }}"
+    archivo: "{{ inventory_hostname }}.{{ ts.ts_fecha }}.{{ ts.ts_hora }}.cfg"
+  tasks:
+    - name: Show running-config
+      cisco.ios.ios_command:
+        commands: show running-config
+      register: salida
+
+    - name: Crear carpeta equipo/mes/dia
+      ansible.builtin.file:
+        path: "{{ dir_respaldo }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+
+    - name: Guardar el respaldo
+      ansible.builtin.copy:
+        content: "{{ salida.stdout[0] }}\n"
+        dest: "{{ dir_respaldo }}/{{ archivo }}"
+        mode: "0644"
+      delegate_to: localhost
+
+    - name: Ruta del respaldo
+      ansible.builtin.debug:
+        msg: "{{ dir_respaldo }}/{{ archivo }}"

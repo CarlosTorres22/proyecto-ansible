@@ -1,0 +1,34 @@
+---
+# R4 - Router de borde de Honduras (AS 65003)
+ansible_host: 192.168.99.4
+rol: borde
+router_id: 4.4.4.4
+interfaces:
+  - nombre: Ethernet0/0
+    descripcion: WAN eBGP hacia ISP R2 e0/2
+    ip: 200.0.24.4
+    mascara: 255.255.255.0
+  - nombre: Ethernet0/1
+    descripcion: Enlace L3 hacia SW7 e0/0
+    ip: 10.0.26.1
+    mascara: 255.255.255.0
+    igp: vecino
+  - nombre: Ethernet0/2
+    descripcion: MGMT hacia nube Net
+    ip: 192.168.99.4
+    mascara: 255.255.255.0
+bgp:
+  asn: 65003
+  redes:
+    - red: 4.4.4.4
+      mascara: 255.255.255.255
+    - red: 7.7.7.7
+      mascara: 255.255.255.255
+    - red: 10.0.26.0
+      mascara: 255.255.255.0
+    - red: 10.0.23.0
+      mascara: 255.255.255.0
+  vecinos:
+    - ip: 200.0.24.2
+      asn: 65000
+      descripcion: ISP-R2

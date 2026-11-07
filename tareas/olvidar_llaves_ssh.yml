@@ -1,0 +1,24 @@
+---
+# ============================================================
+# olvidar_llaves_ssh.yml - Se importa al inicio de los playbooks.
+# Cada Wipe en EVE-NG genera llaves RSA nuevas en los equipos y
+# Ansible (paramiko) rechaza la conexion si ~/.ssh/known_hosts
+# guarda las anteriores ("host key mismatch"). Aqui se borran las
+# llaves guardadas de los equipos de red; al conectarse, Ansible
+# acepta y guarda las nuevas.
+# ============================================================
+- name: Olvidar llaves SSH anteriores de los equipos de red
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Borrar la llave guardada de cada equipo (cambia con cada Wipe)
+      ansible.builtin.known_hosts:
+        name: "{{ (puerto == 22) | ternary(ip, '[' ~ ip ~ ']:' ~ puerto) }}"
+        path: "~/.ssh/known_hosts"
+        state: absent
+      vars:
+        ip: "{{ hostvars[item].ansible_host }}"
+        puerto: "{{ hostvars[item].ansible_port | default(22) | int }}"
+      loop: "{{ groups['red'] }}"
+      loop_control:
+        label: "{{ item }} ({{ hostvars[item].ansible_host }})"

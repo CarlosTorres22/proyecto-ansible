@@ -1,0 +1,34 @@
+---
+# R1 - Router de borde de Guatemala (AS 65002)
+ansible_host: 192.168.99.1
+rol: borde
+router_id: 1.1.1.1
+interfaces:
+  - nombre: Ethernet0/0
+    descripcion: WAN eBGP hacia ISP R2 e0/0
+    ip: 200.0.12.1
+    mascara: 255.255.255.0
+  - nombre: Ethernet0/1
+    descripcion: Enlace L3 hacia SW5 e0/0
+    ip: 10.0.21.1
+    mascara: 255.255.255.0
+    igp: vecino
+  - nombre: Ethernet0/2
+    descripcion: MGMT hacia nube Net
+    ip: 192.168.99.1
+    mascara: 255.255.255.0
+bgp:
+  asn: 65002
+  redes:
+    - red: 1.1.1.1
+      mascara: 255.255.255.255
+    - red: 5.5.5.5
+      mascara: 255.255.255.255
+    - red: 10.0.21.0
+      mascara: 255.255.255.0
+    - red: 10.0.22.0
+      mascara: 255.255.255.0
+  vecinos:
+    - ip: 200.0.12.2
+      asn: 65000
+      descripcion: ISP-R2

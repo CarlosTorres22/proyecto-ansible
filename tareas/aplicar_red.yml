@@ -1,0 +1,18 @@
+---
+# Tareas comunes de 01_red.yml (se reutilizan en cada grupo de equipos)
+
+- name: Direccionamiento, VLANs, IGP y BGP (plantilla red.j2)
+  cisco.ios.ios_config:
+    src: "{{ playbook_dir }}/plantillas/red.j2"
+
+- name: Encender interfaces (no shutdown) con el modulo de recursos
+  cisco.ios.ios_interfaces:
+    config:
+      - name: "{{ item }}"
+        enabled: true
+    state: merged
+  loop: "{{ (interfaces | map(attribute='nombre') | list) + (svis | default([]) | map(attribute='vlan') | map('string') | map('regex_replace', '^', 'Vlan') | list) }}"
+
+- name: Guardar configuracion (write memory) si hubo cambios
+  cisco.ios.ios_config:
+    save_when: modified

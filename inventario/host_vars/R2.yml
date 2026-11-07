@@ -1,0 +1,37 @@
+---
+# R2 - ISP CL@R0 / nucleo de interconexion (AS 65000)
+ansible_host: 192.168.99.2
+rol: isp
+router_id: 2.2.2.2
+interfaces:
+  - nombre: Ethernet0/0
+    descripcion: WAN hacia R1 Guatemala AS65002
+    ip: 200.0.12.2
+    mascara: 255.255.255.0
+  - nombre: Ethernet0/1
+    descripcion: WAN hacia R3 El Salvador AS65004
+    ip: 200.0.23.2
+    mascara: 255.255.255.0
+  - nombre: Ethernet0/2
+    descripcion: WAN hacia R4 Honduras AS65003
+    ip: 200.0.24.2
+    mascara: 255.255.255.0
+  - nombre: Ethernet0/3
+    descripcion: MGMT hacia nube Net
+    ip: 192.168.99.2
+    mascara: 255.255.255.0
+bgp:
+  asn: 65000
+  redes:
+    - red: 2.2.2.2
+      mascara: 255.255.255.255
+  vecinos:
+    - ip: 200.0.12.1
+      asn: 65002
+      descripcion: Guatemala-R1
+    - ip: 200.0.23.3
+      asn: 65004
+      descripcion: ElSalvador-R3
+    - ip: 200.0.24.4
+      asn: 65003
+      descripcion: Honduras-R4

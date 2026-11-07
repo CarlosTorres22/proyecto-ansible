@@ -1,0 +1,103 @@
+---
+# ============================================================
+#  Variables globales - Compania XYZ, SA
+#  Nomenclatura D = 20  ->  redes 10.0.(D+n).0/24 = 10.0.21 ... 10.0.27
+#  MGMT 192.168.99.0/24 - eBGP 200.0.x.0/24 - ISP AS 65000
+# ============================================================
+
+dominio: xyz.local
+
+# ---------- Credenciales (laboratorio) ----------
+usuario_ansible: ansible          # cuenta de servicio de la automatizacion (creada en el Day-0)
+clave_ansible: Ansible2026
+usuario_admin: admin              # cuenta para el personal de redes
+clave_admin: Admin2026
+enable_secret: Cisco2026
+
+# ---------- Zona horaria y NTP ----------
+zona_horaria_nombre: GT
+zona_horaria_offset: -6
+ntp_server: 132.163.97.5          # dummy config (enunciado)
+
+# ---------- SSH solo desde la red de Guatemala ----------
+acl_ssh_nombre: SSH-GUATEMALA
+acl_ssh_redes:
+  - red: 192.168.99.0             # MGMT: NOC de Guatemala (servidor de automatizacion)
+    wildcard: 0.0.0.255
+  - red: 10.0.21.0                # Guatemala: enlace R1-SW5
+    wildcard: 0.0.0.255
+  - red: 10.0.22.0                # Guatemala: LAN de usuarios
+    wildcard: 0.0.0.255
+
+# ---------- Banners (sin caracteres # ni >) ----------
+banner_login: |
+  ****************************************************
+  *  COMPANIA XYZ - ACCESO RESTRINGIDO               *
+  *  Solo personal autorizado. Toda actividad es     *
+  *  monitoreada y registrada.                       *
+  ****************************************************
+banner_motd: |
+  Equipo {{ inventory_hostname }} - Sede {{ sede }}
+  Administrado con Ansible. Los cambios manuales seran sobrescritos.
+
+# ---------- SNMPv3 hacia Zabbix ----------
+snmp_grupo: admin-group
+snmp_usuarios:
+  - nombre: USER
+    auth: AuthXYZ2026
+    priv: PrivXYZ2026
+  - nombre: USER2
+    auth: Auth2XYZ2026
+    priv: Priv2XYZ2026
+snmp_usuario_zabbix: USER
+zabbix_ip: 192.168.99.10
+snmp_hosts:
+  - 192.168.99.10    # Zabbix real del laboratorio
+  - 10.13.3.5        # direcciones del enunciado (referencia)
+  - 10.83.3.10
+  - 10.83.3.17       # en el enunciado "poll" (sintaxis ASA); en IOS es un host normal
+
+# ---------- Logging (dummy config) ----------
+logging_host: 1.1.1.1
+
+# ---------- Respaldos ----------
+respaldo_raiz: "{{ playbook_dir }}/respaldos"
+
+# ---------- Datos por sede (los usa el cierre de sedes) ----------
+isp_asn: 65000
+sedes:
+  guatemala:
+    nombre: Guatemala
+    borde: R1
+    switch: SW5
+    asn: 65002
+    ip_wan_borde: 200.0.12.1
+    ip_wan_isp: 200.0.12.2
+    puerto_usuarios: Ethernet0/2
+  salvador:
+    nombre: El Salvador
+    borde: R3
+    switch: SW6
+    asn: 65004
+    ip_wan_borde: 200.0.23.3
+    ip_wan_isp: 200.0.23.2
+    puerto_usuarios: Ethernet0/2
+  honduras:
+    nombre: Honduras
+    borde: R4
+    switch: SW7
+    asn: 65003
+    ip_wan_borde: 200.0.24.4
+    ip_wan_isp: 200.0.24.2
+    puerto_usuarios: Ethernet0/2
+
+# ---------- Zabbix ----------
+zbx_version: "7.0"
+zbx_repo_deb: https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_latest_7.0+ubuntu24.04_all.deb
+zbx_db_nombre: zabbix
+zbx_db_usuario: zabbix
+zbx_db_clave: ZabbixDB2026
+zbx_nombre_servidor: XYZ-NOC
+zbx_zona_horaria: America/Guatemala
+zbx_plantillas:
+  - Cisco IOS by SNMP     # ya incluye los chequeos ICMP (no agregar "ICMP Ping")

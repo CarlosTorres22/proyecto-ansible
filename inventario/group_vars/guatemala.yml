@@ -1,0 +1,5 @@
+---
+sede: Guatemala
+igp: ospf
+ospf_proceso: 1
+ospf_area: 0

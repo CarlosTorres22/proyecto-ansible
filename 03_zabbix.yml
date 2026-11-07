@@ -1,0 +1,219 @@
+---
+# ============================================================
+# 03_zabbix.yml - Zabbix configurado por Ansible (detalles de implementacion)
+#   Parte 1: instala Zabbix 7.0 LTS (servidor + frontend Apache + MySQL)
+#            en este mismo Ubuntu 24.04  -> requiere -K (sudo)
+#   Parte 2: da de alta todos los equipos con SNMPv3 (authPriv MD5 + AES128)
+# ============================================================
+- name: Instalacion de Zabbix 7.0 LTS
+  hosts: localhost
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Paquetes base (MySQL, PyMySQL para Ansible, fping, snmp, locales)
+      ansible.builtin.apt:
+        name:
+          - mysql-server
+          - python3-pymysql
+          - fping
+          - snmp
+          - locales
+        state: present
+        update_cache: true
+
+    - name: Locale en_US.UTF-8 (lo requiere el frontend)
+      community.general.locale_gen:
+        name: en_US.UTF-8
+        state: present
+
+    - name: Repositorio oficial de Zabbix 7.0 para Ubuntu 24.04
+      ansible.builtin.apt:
+        deb: "{{ zbx_repo_deb }}"
+
+    - name: Paquetes de Zabbix
+      ansible.builtin.apt:
+        name:
+          - zabbix-server-mysql
+          - zabbix-frontend-php
+          - zabbix-apache-conf
+          - zabbix-sql-scripts
+          - zabbix-agent
+        state: present
+        update_cache: true
+
+    - name: MySQL en marcha
+      ansible.builtin.service:
+        name: mysql
+        state: started
+        enabled: true
+
+    - name: Base de datos de Zabbix (utf8mb4 / utf8mb4_bin)
+      community.mysql.mysql_db:
+        name: "{{ zbx_db_nombre }}"
+        encoding: utf8mb4
+        collation: utf8mb4_bin
+        state: present
+        login_unix_socket: /run/mysqld/mysqld.sock
+
+    - name: Usuario de base de datos para Zabbix
+      community.mysql.mysql_user:
+        name: "{{ zbx_db_usuario }}"
+        host: localhost
+        password: "{{ zbx_db_clave }}"
+        priv: "{{ zbx_db_nombre }}.*:ALL"
+        state: present
+        login_unix_socket: /run/mysqld/mysqld.sock
+      no_log: true
+
+    - name: Contar tablas de la base de datos
+      community.mysql.mysql_query:
+        login_db: "{{ zbx_db_nombre }}"
+        query: "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = %s"
+        positional_args:
+          - "{{ zbx_db_nombre }}"
+        login_unix_socket: /run/mysqld/mysqld.sock
+      register: tablas
+
+    - name: Importar el esquema inicial (solo si la base esta vacia)
+      when: (tablas.query_result[0][0].n | int) == 0
+      block:
+        - name: Permitir creacion de funciones durante la importacion
+          community.mysql.mysql_variables:
+            variable: log_bin_trust_function_creators
+            value: 1
+            login_unix_socket: /run/mysqld/mysqld.sock
+
+        - name: Importar server.sql.gz (tarda 1-3 minutos)
+          ansible.builtin.shell: >
+            set -o pipefail &&
+            zcat /usr/share/zabbix-sql-scripts/mysql/server.sql.gz |
+            mysql --default-character-set=utf8mb4 {{ zbx_db_nombre }}
+          args:
+            executable: /bin/bash
+          changed_when: true
+
+        - name: Volver a desactivar log_bin_trust_function_creators
+          community.mysql.mysql_variables:
+            variable: log_bin_trust_function_creators
+            value: 0
+            login_unix_socket: /run/mysqld/mysqld.sock
+
+    - name: Contrasena de la BD en zabbix_server.conf
+      ansible.builtin.lineinfile:
+        path: /etc/zabbix/zabbix_server.conf
+        regexp: '^#?\s*DBPassword='
+        line: "DBPassword={{ zbx_db_clave }}"
+      notify: Reiniciar zabbix-server
+      no_log: true
+
+    - name: Zona horaria de PHP para el frontend
+      ansible.builtin.copy:
+        dest: /etc/php/8.3/apache2/conf.d/99-zabbix-timezone.ini
+        content: "date.timezone = {{ zbx_zona_horaria }}\n"
+        mode: "0644"
+      notify: Reiniciar apache2
+
+    - name: Configuracion del frontend (reemplaza el asistente web)
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/plantillas/zabbix.conf.php.j2"
+        dest: /etc/zabbix/web/zabbix.conf.php
+        owner: www-data
+        group: www-data
+        mode: "0600"
+      notify: Reiniciar apache2
+
+    - name: Servicios habilitados y en marcha
+      ansible.builtin.service:
+        name: "{{ item }}"
+        state: started
+        enabled: true
+      loop:
+        - zabbix-server
+        - zabbix-agent
+        - apache2
+
+    - name: Aplicar reinicios pendientes
+      ansible.builtin.meta: flush_handlers
+
+    - name: Esperar a que responda la API de Zabbix
+      ansible.builtin.uri:
+        url: http://127.0.0.1/zabbix/api_jsonrpc.php
+        method: POST
+        body_format: json
+        body:
+          jsonrpc: "2.0"
+          method: apiinfo.version
+          params: []
+          id: 1
+      register: api
+      until: api.status == 200 and api.json.result is defined
+      retries: 30
+      delay: 5
+
+    - name: Version de Zabbix instalada
+      ansible.builtin.debug:
+        msg: "Zabbix {{ api.json.result }} listo en http://<IP-del-servidor>/zabbix  (usuario Admin / clave zabbix)"
+
+  handlers:
+    - name: Reiniciar zabbix-server
+      ansible.builtin.service:
+        name: zabbix-server
+        state: restarted
+
+    - name: Reiniciar apache2
+      ansible.builtin.service:
+        name: apache2
+        state: restarted
+
+# ---------------- Parte 2 ----------------
+- name: Alta de equipos de red en Zabbix
+  hosts: zabbix_api
+  gather_facts: false
+  vars:
+    cred_snmp: "{{ snmp_usuarios | selectattr('nombre', 'equalto', snmp_usuario_zabbix) | first }}"
+  tasks:
+    - name: Grupos de hosts por sede
+      community.zabbix.zabbix_group:
+        host_groups:
+          - XYZ/ISP
+          - XYZ/Guatemala
+          - XYZ/El Salvador
+          - XYZ/Honduras
+        state: present
+
+    - name: Registrar cada equipo con interfaz SNMPv3
+      community.zabbix.zabbix_host:
+        host_name: "{{ item }}"
+        visible_name: "{{ item }} - {{ hostvars[item].sede }}"
+        description: "Compania XYZ - sede {{ hostvars[item].sede }} - rol {{ hostvars[item].rol }}"
+        host_groups:
+          - "XYZ/{{ hostvars[item].sede }}"
+        link_templates: "{{ zbx_plantillas }}"
+        status: enabled
+        state: present
+        inventory_mode: automatic
+        tags:
+          - tag: sede
+            value: "{{ hostvars[item].sede }}"
+          - tag: rol
+            value: "{{ hostvars[item].rol }}"
+        interfaces:
+          - type: snmp
+            main: 1
+            useip: 1
+            ip: "{{ hostvars[item].ansible_host }}"
+            dns: ""
+            port: "161"
+            details:
+              version: 3
+              bulk: 1
+              securityname: "{{ cred_snmp.nombre }}"
+              securitylevel: 2        # authPriv
+              authprotocol: 0         # MD5
+              authpassphrase: "{{ cred_snmp.auth }}"
+              privprotocol: 1         # AES128
+              privpassphrase: "{{ cred_snmp.priv }}"
+              contextname: ""
+      loop: "{{ groups['red'] }}"
+      loop_control:
+        label: "{{ item }} ({{ hostvars[item].ansible_host }})"

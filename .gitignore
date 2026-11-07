@@ -1,0 +1,4 @@
+# Archivos generados al ejecutar los playbooks
+respaldos/
+*.retry
+__pycache__/

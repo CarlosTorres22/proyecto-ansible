@@ -1,0 +1,18 @@
+hostname SW6
+ip domain-name xyz.local
+username ansible privilege 15 secret Ansible2026
+interface Ethernet0/0
+ shutdown
+interface Ethernet0/2
+ shutdown
+interface Ethernet0/3
+ shutdown
+interface Vlan1
+ ip address 192.168.99.6 255.255.255.0
+ no shutdown
+crypto key generate rsa general-keys modulus 2048
+ip ssh version 2
+line vty 0 4
+ login local
+ transport input ssh
+end

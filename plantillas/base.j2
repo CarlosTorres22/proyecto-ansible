@@ -1,0 +1,42 @@
+{# ==========================================================
+   Plantilla BASE (requisito 1): hostname, dominio, servicios, NTP,
+   SSH v2, ACL de SSH, lineas, logging, grupo y destinos SNMPv3.
+   Banners, usuarios, enable secret y usuarios SNMPv3 se aplican
+   con tareas aparte en 01_configuracion_base.yml.
+   ========================================================== #}
+hostname {{ inventory_hostname }}
+no ip domain-lookup
+ip domain-name {{ dominio }}
+service timestamps debug datetime msec localtime show-timezone
+service timestamps log datetime msec localtime show-timezone
+service password-encryption
+clock timezone {{ zona_horaria_nombre }} {{ zona_horaria_offset }} 0
+ntp server {{ ntp_server }}
+ip ssh version 2
+ip ssh time-out 60
+ip access-list standard {{ acl_ssh_nombre }}
+{% for r in acl_ssh_redes %}
+ permit {{ r.red }} {{ r.wildcard }}
+{% endfor %}
+ deny   any log
+line con 0
+ exec-timeout 0 0
+ logging synchronous
+line vty 0 4
+ exec-timeout 15 0
+ logging synchronous
+ login local
+ transport input ssh
+ access-class {{ acl_ssh_nombre }} in
+logging buffered alerts
+logging monitor warnings
+logging trap warnings
+logging origin-id hostname
+logging host {{ logging_host }}
+snmp-server group {{ snmp_grupo }} v3 priv
+{% for h in snmp_hosts %}
+snmp-server host {{ h }} version 3 priv {{ snmp_usuario_zabbix }}
+{% endfor %}
+snmp-server location {{ sede }}
+snmp-server contact NOC-XYZ
+snmp-server enable traps snmp linkdown linkup

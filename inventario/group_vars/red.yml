@@ -1,0 +1,11 @@
+---
+# Conexion a los equipos Cisco (IOL) por SSH
+ansible_connection: ansible.netcommon.network_cli
+ansible_network_os: cisco.ios.ios
+ansible_network_cli_ssh_type: paramiko
+ansible_user: "{{ usuario_ansible }}"
+ansible_password: "{{ clave_ansible }}"
+ansible_become: true
+ansible_become_method: enable
+ansible_become_password: "{{ enable_secret }}"
+ansible_python_interpreter: "{{ ansible_playbook_python }}"

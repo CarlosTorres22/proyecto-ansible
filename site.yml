@@ -1,0 +1,16 @@
+---
+# ============================================================
+# site.yml - De cero a funcionando en un solo comando
+#   ansible-playbook site.yml -K
+# ============================================================
+- name: 1. Configuracion base (requisito 1)
+  ansible.builtin.import_playbook: 01_configuracion_base.yml
+
+- name: 2. Interconexion de sedes (BGP, OSPF, EIGRP) + base de las PCs
+  ansible.builtin.import_playbook: 02_red.yml
+
+- name: 3. Zabbix configurado por Ansible
+  ansible.builtin.import_playbook: 03_zabbix.yml
+
+- name: 4. Respaldo de configuraciones (requisito 2)
+  ansible.builtin.import_playbook: 04_respaldo.yml

@@ -1,0 +1,86 @@
+---
+# ============================================================
+# 05_cierre_sede.yml - REQUISITO 3 (script 3): cierre (o reapertura) de una sede
+#   * Apaga la sesion eBGP entre la sede y el ISP (ambos extremos)
+#     -> el prefijo de la sede desaparece del resto de la red
+#   * Apaga el puerto de usuarios del switch de la sede
+#   * Deshabilita los equipos de la sede en Zabbix (sin falsas alarmas)
+#   La gestion de los equipos se conserva para poder reabrir la sede.
+# Uso:
+#   ansible-playbook 05_cierre_sede.yml        (pregunta sede y accion)
+#   ansible-playbook 05_cierre_sede.yml -e "sede_cierre=honduras accion_cierre=cerrar"
+#   ansible-playbook 05_cierre_sede.yml -e "sede_cierre=honduras accion_cierre=abrir"
+# ============================================================
+- name: Olvidar llaves SSH anteriores (cambian con cada Wipe)
+  ansible.builtin.import_playbook: tareas/olvidar_llaves_ssh.yml
+
+- name: Cierre / reapertura de sede
+  hosts: isp:bordes:switches:zabbix_api
+  gather_facts: false
+  vars_prompt:
+    - name: sede_cierre
+      prompt: "Sede (guatemala / salvador / honduras)"
+      private: false
+    - name: accion_cierre
+      prompt: "Accion (cerrar / abrir)"
+      default: cerrar
+      private: false
+  vars:
+    s: "{{ sedes[sede_cierre] }}"
+    cerrar: "{{ accion_cierre == 'cerrar' }}"
+    prefijo_no: "{{ '' if accion_cierre == 'cerrar' else 'no ' }}"
+  tasks:
+    - name: Validar parametros
+      ansible.builtin.assert:
+        that:
+          - sede_cierre in sedes
+          - accion_cierre in ['cerrar', 'abrir']
+        fail_msg: "Usa sede_cierre=guatemala|salvador|honduras y accion_cierre=cerrar|abrir"
+        success_msg: "Accion '{{ accion_cierre }}' sobre la sede {{ s.nombre }}"
+      run_once: true
+
+    - name: Router de borde - sesion eBGP hacia el ISP
+      cisco.ios.ios_config:
+        parents: "router bgp {{ s.asn }}"
+        lines: "{{ prefijo_no }}neighbor {{ s.ip_wan_isp }} shutdown"
+        save_when: modified
+      when: inventory_hostname == s.borde
+
+    - name: ISP - sesion eBGP hacia la sede
+      cisco.ios.ios_config:
+        parents: "router bgp {{ isp_asn }}"
+        lines: "{{ prefijo_no }}neighbor {{ s.ip_wan_borde }} shutdown"
+        save_when: modified
+      when: "'isp' in group_names"
+
+    - name: Switch de la sede - puerto de usuarios
+      cisco.ios.ios_interfaces:
+        config:
+          - name: "{{ s.puerto_usuarios }}"
+            enabled: "{{ not cerrar }}"
+        state: merged
+      when: inventory_hostname == s.switch
+
+    - name: Switch de la sede - guardar configuracion
+      cisco.ios.ios_config:
+        save_when: modified
+      when: inventory_hostname == s.switch
+
+    - name: Zabbix - deshabilitar / habilitar los equipos de la sede
+      community.zabbix.zabbix_host:
+        host_name: "{{ item }}"
+        status: "{{ 'disabled' if cerrar else 'enabled' }}"
+        force: false
+      loop: "{{ groups[sede_cierre] }}"
+      when: inventory_hostname == 'zabbix_api'
+
+    - name: Estado de las sesiones BGP en el ISP
+      cisco.ios.ios_command:
+        commands: show ip bgp summary | begin Neighbor
+      register: bgp
+      when: "'isp' in group_names"
+
+    - name: Resultado
+      ansible.builtin.debug:
+        var: bgp.stdout_lines[0]
+      when: "'isp' in group_names"

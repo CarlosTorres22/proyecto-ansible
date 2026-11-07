@@ -1,0 +1,105 @@
+{# ==========================================================
+   Plantilla de RED: direccionamiento, VLANs, loopbacks,
+   IGP (OSPF/EIGRP) y BGP. Los datos salen de host_vars/group_vars.
+   ========================================================== #}
+hostname {{ inventory_hostname }}
+no ip domain-lookup
+ip domain-name {{ dominio }}
+{% if rol == 'switch' %}
+ip routing
+vtp mode transparent
+{% for v in vlans %}
+vlan {{ v.id }}
+ name {{ v.nombre }}
+{% endfor %}
+{% endif %}
+{% if router_id is defined %}
+interface Loopback0
+ description Router-ID
+ ip address {{ router_id }} 255.255.255.255
+{% endif %}
+{% for s in svis | default([]) %}
+interface Vlan{{ s.vlan }}
+ description {{ s.descripcion }}
+ ip address {{ s.ip }} {{ s.mascara }}
+{% endfor %}
+{% for i in interfaces %}
+interface {{ i.nombre }}
+ description {{ i.descripcion }}
+{% if i.modo | default('ruteado') == 'acceso' %}
+{% if i.gestion | default(false) %}
+{# Puerto por donde entra Ansible: no se cambia su modo para no cortar la sesion #}
+ spanning-tree portfast
+ spanning-tree bpdufilter enable
+ no cdp enable
+{% else %}
+ switchport mode access
+ switchport access vlan {{ i.vlan }}
+ switchport nonegotiate
+ spanning-tree portfast
+{% endif %}
+{% else %}
+{% if rol == 'switch' %}
+ no switchport
+{% endif %}
+ ip address {{ i.ip }} {{ i.mascara }}
+{% endif %}
+{% endfor %}
+{# ---------------- Ruta por defecto (solo PCs) ---------------- #}
+{% if ruta_default is defined %}
+ip route 0.0.0.0 0.0.0.0 {{ ruta_default }}
+{% endif %}
+{# ---------------- IGP de la sede ---------------- #}
+{% if rol in ['borde', 'switch'] %}
+{% set igp_ifaces = (interfaces | selectattr('igp', 'defined') | list) + (svis | default([]) | selectattr('igp', 'defined') | list) %}
+{% if igp == 'ospf' %}
+router ospf {{ ospf_proceso }}
+ router-id {{ router_id }}
+ passive-interface default
+{% for i in interfaces | selectattr('igp', 'defined') | selectattr('igp', 'equalto', 'vecino') %}
+ no passive-interface {{ i.nombre }}
+{% endfor %}
+ network {{ router_id }} 0.0.0.0 area {{ ospf_area }}
+{% for i in igp_ifaces %}
+ network {{ i.ip }} 0.0.0.0 area {{ ospf_area }}
+{% endfor %}
+{% if rol == 'borde' %}
+ redistribute bgp {{ bgp.asn }} subnets
+{% endif %}
+{% elif igp == 'eigrp' %}
+router eigrp {{ eigrp_as }}
+ eigrp router-id {{ router_id }}
+ passive-interface default
+{% for i in interfaces | selectattr('igp', 'defined') | selectattr('igp', 'equalto', 'vecino') %}
+ no passive-interface {{ i.nombre }}
+{% endfor %}
+ network {{ router_id }} 0.0.0.0
+{% for i in igp_ifaces %}
+ network {{ i.ip }} 0.0.0.0
+{% endfor %}
+{% if rol == 'borde' %}
+ redistribute bgp {{ bgp.asn }} metric 1 1 1 1 1
+{% endif %}
+{% endif %}
+{% endif %}
+{# ---------------- BGP entre sedes ---------------- #}
+{% if bgp is defined %}
+{% if rol == 'borde' %}
+ip as-path access-list 1 permit ^$
+route-map BGP_OUT permit 10
+ match as-path 1
+{% endif %}
+router bgp {{ bgp.asn }}
+ bgp router-id {{ router_id }}
+ bgp log-neighbor-changes
+{% for n in bgp.redes | default([]) %}
+ network {{ n.red }} mask {{ n.mascara }}
+{% endfor %}
+{% for v in bgp.vecinos %}
+ neighbor {{ v.ip }} remote-as {{ v.asn }}
+ neighbor {{ v.ip }} description {{ v.descripcion }}
+{% if rol == 'borde' %}
+ neighbor {{ v.ip }} route-map BGP_OUT out
+{% endif %}
+{% endfor %}
+{% endif %}

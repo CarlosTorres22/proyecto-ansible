@@ -1,0 +1,95 @@
+---
+# ============================================================
+# 01_configuracion_base.yml - REQUISITO 1 (script 1)
+# Configuracion base de TODOS los routers/switches:
+#   hostname, dominio, SSH version 2, usuarios, enable secret,
+#   line vty, access-class (solo Guatemala),
+#   banners LOGIN y MOTD, NTP, SNMPv3 hacia Zabbix y logging.
+# Antes de 02_red.yml las PCs no tienen ruta: se omiten y 02_red.yml
+# les aplica este mismo playbook al terminar.
+# ============================================================
+- name: Olvidar llaves SSH anteriores (cambian con cada Wipe)
+  ansible.builtin.import_playbook: tareas/olvidar_llaves_ssh.yml
+
+- name: Configuracion base de los equipos de red
+  hosts: "{{ objetivo | default('red') }}"
+  gather_facts: false
+  tasks:
+    - name: PCs - esperar a que haya ruta y SSH (se omiten antes de 02_red.yml)
+      ansible.builtin.include_tasks: tareas/esperar_ssh.yml
+      when: inventory_hostname in groups['gestion_inband']
+
+    - name: Banner LOGIN
+      cisco.ios.ios_banner:
+        banner: login
+        text: "{{ banner_login }}"
+        state: present
+
+    - name: Banner MOTD
+      cisco.ios.ios_banner:
+        banner: motd
+        text: "{{ banner_motd }}"
+        state: present
+
+    - name: Usuarios locales con privilegio 15
+      cisco.ios.ios_user:
+        name: "{{ item.nombre }}"
+        privilege: 15
+        configured_password: "{{ item.clave }}"
+        password_type: secret
+        update_password: on_create
+        state: present
+      loop:
+        - nombre: "{{ usuario_admin }}"
+          clave: "{{ clave_admin }}"
+        - nombre: "{{ usuario_ansible }}"
+          clave: "{{ clave_ansible }}"
+      loop_control:
+        label: "{{ item.nombre }}"
+
+    - name: Revisar si ya existe enable secret
+      cisco.ios.ios_command:
+        commands: show running-config | include ^enable secret
+      register: run_enable
+
+    - name: Enable secret
+      cisco.ios.ios_config:
+        lines: "enable secret {{ enable_secret }}"
+      when: "'enable secret' not in run_enable.stdout[0]"
+      no_log: true
+
+    - name: Grupo SNMPv3 (debe existir antes que los usuarios)
+      cisco.ios.ios_config:
+        lines: "snmp-server group {{ snmp_grupo }} v3 priv"
+
+    - name: Usuarios SNMPv3 existentes (no aparecen en el running-config)
+      cisco.ios.ios_command:
+        commands: show snmp user
+      register: snmp_actual
+
+    - name: Crear usuarios SNMPv3 (auth MD5 / priv AES 128) si no existen
+      cisco.ios.ios_config:
+        lines: "snmp-server user {{ item.nombre }} {{ snmp_grupo }} v3 auth md5 {{ item.auth }} priv aes 128 {{ item.priv }}"
+      loop: "{{ snmp_usuarios }}"
+      loop_control:
+        label: "{{ item.nombre }}"
+      when: "('User name: ' ~ item.nombre) not in (snmp_actual.stdout_lines[0] | map('trim') | list)"
+      no_log: true
+
+    - name: NTP, SSH v2, ACL, lineas, logging y destinos SNMPv3 (plantilla base.j2)
+      cisco.ios.ios_config:
+        src: "{{ playbook_dir }}/plantillas/base.j2"
+
+    - name: Estado del logging
+      cisco.ios.ios_command:
+        commands: show logging | include Syslog logging
+      register: estado_log
+
+    - name: Logging enable (en IOS el equivalente es 'logging on')
+      cisco.ios.ios_config:
+        lines: logging on
+      when: "'disabled' in estado_log.stdout[0]"
+
+    - name: Guardar configuracion (write memory) si hubo cambios
+      cisco.ios.ios_config:
+        save_when: modified

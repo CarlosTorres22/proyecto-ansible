@@ -1,0 +1,10 @@
+---
+# PC8 - Usuario de Guatemala (router IOL haciendo de PC)
+ansible_host: 10.0.22.10
+rol: pc
+ruta_default: 10.0.22.1
+interfaces:
+  - nombre: Ethernet0/0
+    descripcion: LAN usuarios hacia SW5 e0/2
+    ip: 10.0.22.10
+    mascara: 255.255.255.0

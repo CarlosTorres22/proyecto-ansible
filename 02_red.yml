@@ -1,0 +1,24 @@
+---
+# ============================================================
+# 02_red.yml - Interconexion de sedes (detalles de implementacion)
+#   * Direccionamiento 10.0.(D+n).0/24 con D = 20 (10.0.21 ... 10.0.27)
+#   * Loopback0 = router-id, IGP: OSPF 1 (Guatemala, El Salvador)
+#     y EIGRP 100 (Honduras), con BGP redistribuido en el IGP
+#   * eBGP entre cada sede y el ISP (R2), filtro BGP_OUT
+# Al final aplica 01_configuracion_base.yml a las PCs, que ya tienen ruta.
+# ============================================================
+- name: Olvidar llaves SSH anteriores (cambian con cada Wipe)
+  ansible.builtin.import_playbook: tareas/olvidar_llaves_ssh.yml
+
+- name: Red - routers y switches (gestion por la nube Net)
+  hosts: gestion_oob
+  gather_facts: false
+  tasks:
+    - name: Direccionamiento, VLANs, loopbacks, IGP y BGP
+      ansible.builtin.include_tasks: tareas/aplicar_red.yml
+
+- name: Configuracion base de las PCs (en banda, ya con ruta)
+  ansible.builtin.import_playbook: 01_configuracion_base.yml
+  vars:
+    objetivo: pcs
+    espera_alcance: 300

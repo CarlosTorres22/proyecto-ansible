@@ -1,0 +1,10 @@
+---
+# PC10 - Usuario de Honduras (router IOL haciendo de PC)
+ansible_host: 10.0.23.10
+rol: pc
+ruta_default: 10.0.23.1
+interfaces:
+  - nombre: Ethernet0/0
+    descripcion: LAN usuarios hacia SW7 e0/2
+    ip: 10.0.23.10
+    mascara: 255.255.255.0
